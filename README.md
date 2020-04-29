@@ -7,7 +7,7 @@ Solves the following problem:
 
 <!-- \mathrm{min}_{T = U^{(1)} \circ \cdots \circ} \|T\|_\mathrm{max} \qquad \mathrm{ s.t. } \qquad \| \Omega * (T - Z) \|_F \leq \delta -->
 <!-- <img src="https://latex.codecogs.com/png.latex?%5Cmathrm%7Bmin%7D_%7BT%20%3D%20U%5E%7B(1)%7D%20%5Ccirc%20%5Ccdots%20%5Ccirc%7D%20%5C%7CT%5C%7C_%5Cmathrm%7Bmax%7D%20%5Cquad%20%5Cmathrm%7B%20s.t.%20%7D%20%5Cquad%20%5C%7C%20%5COmega%20*%20(T%20-%20Z)%20%5C%7C_F%20%5Cleq%20%5Cdelta" alt="eqn 1"/> -->
-<img src="eqn1.svg" height="60" />
+<img src="eqn1.svg" height="52" />
 
 via the relaxation
 
