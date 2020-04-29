@@ -2,6 +2,14 @@ import numpy as np
 #import jax.numpy as np
 from typing import Callable
 
+'''
+optimization module
+
+Provides matrix-valued prox-gradient method and its accelerated versions.
+Modified from the code in https://github.com/harrispopgen/mushi/
+
+'''
+
 def hs_dot(A, B):
     return (A*B).flatten().sum()
 
