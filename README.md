@@ -2,6 +2,7 @@
 ---
 
 Tensor completion code to accompany https://arxiv.org/abs/1910.10692.
+If you use this code, please cite this paper!
 
 Solves the following problem:
 
