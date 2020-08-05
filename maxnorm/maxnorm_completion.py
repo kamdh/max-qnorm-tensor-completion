@@ -96,7 +96,8 @@ def tensor_completion_maxnorm(data, rank, delta, init='svd', U0=None,
                                   kappa=10., beta=1, epsilon=1e-2,
                                   sgd=False, sgd_batch_size=200,
                                   tol=1e-4, max_iter=10,
-                                  inner_max_iter=30, inner_tol=None, inner_line_iter=30, inner_line_factr=0.5,
+                                  inner_max_iter=30, inner_tol=None,
+                                  inner_line_iter=30, inner_line_factr=0.5,
                                   verbosity=0):
 
     def cost(U, data, delta, kappa, beta, epsilon):
@@ -127,13 +128,14 @@ def tensor_completion_maxnorm(data, rank, delta, init='svd', U0=None,
             U = [sparse_unfold_svs(data, i, rank) for i in range(t)]
         elif init == 'svdrand':
             U = [sparse_unfold_svs(data, i, rank) + \
-                     0.1 / np.sqrt(data.shape[i]) * np.random.randn(data.shape[i], rank)
+                     1.0 / np.sqrt(data.shape[i]) * np.random.randn(data.shape[i], rank)
                      for i in range(t)]
         elif init == 'random':
             U = [np.random.randn(data.shape[i], rank) for i in range(t)]
+        elif init == 'alt_min':
+            U, _ = tensor_completion_alt_min(data, rank, init='svd', max_iter=10)
         else:
             raise Exception("Unrecognized init option " + init)
-        kr_rescale(U, 2**t)
         # mask = data != 0
         # core, factors = parafac(data, rank, mask=mask, init='random', verbose=True, tol=1e-3)
         # scale_mat = np.diag(core.todense()**(1/t))
@@ -145,7 +147,7 @@ def tensor_completion_maxnorm(data, rank, delta, init='svd', U0=None,
     if verbosity > 0:
         print("Initial cost: %1.3e" % cost_old)
         print("Initial qnorm_ub: %1.3e" % max_qnorm_ub(U))
-        print("|| r || = %1.3e, delta = %1.3e" % (resid_norm, delta))
+        print("|| r || = %1.3e, delta = %1.3e" % (resid_norm, delta / np.sqrt(data.nnz)))
     # alternating minimization
     k = 0
     convergence_crit = np.inf
@@ -206,11 +208,10 @@ def tensor_completion_maxnorm(data, rank, delta, init='svd', U0=None,
                                       max_line_iter=inner_line_iter)
             U = copy.deepcopy(U_minus_i)
             U.insert(i, Ui)
-            #U = kr_rescale_factors(U)
+            if k < 3:
+                U = kr_balance_factors(U)
             #tensor = TensorCPD(U, core_values)
         # inner loop finished, check for convergence
-        if k < 5:
-            U = kr_rescale_factors(U)
         norm_ub_k = max_qnorm_ub(U)
         cost_k = cost(U, data, delta, kappa, beta, epsilon)
         cost_arr[k+1] = cost_k

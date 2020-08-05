@@ -1,6 +1,7 @@
 import numpy as np
 #import jax.numpy as np
 from typing import Callable
+import warnings
 
 '''
 optimization module
@@ -49,16 +50,11 @@ def prox_grad_method(x: np.ndarray,
         g1 = g(x)
         grad_g1 = grad_g(x)
         # check for errors
-        if g1 == 0:
-            if verbosity > 0:
-                print("\nZero cost, breaking")
-            break
         if not np.all(np.isfinite(grad_g1)):
-            raise RuntimeError(f'invalid gradient at iteration {k + 1}: '
-                               f'{grad_g1}')
+            warnings.warn("gradient contains invalid values", RuntimeWarning)
+            return np.nan
         if np.all(grad_g1 == 0):
-            if verbosity > 0:
-                print("\nZero gradient, breaking")
+            warnings.warn("zero gradient, breaking", RuntimeWarning)
             break
         # store old iterate
         x_old = x
@@ -77,11 +73,10 @@ def prox_grad_method(x: np.ndarray,
                 s *= gamma  # shrink step size
 
         if line_iter == max_line_iter - 1:
-            if verbosity > 0:
-                print('\nwarning: line search failed\n', flush=True)
+            warnings.warn("line search failed", RuntimeWarning)
             s = s0
-        if not np.all(np.isfinite(x)) and verbosity > 0:
-            print(f'\nwarning: x contains invalid values\n', flush=True)
+        if not np.all(np.isfinite(x)):
+            warnings.warn("x contains invalid values", RuntimeWarning)
         # terminate if objective function is constant within tolerance
         f_old = f
         f = g(x) + h(x)
@@ -139,17 +134,12 @@ def acc_prox_grad_method(x: np.ndarray,
     for k in range(1, max_iter + 1):
         # evaluate differtiable part of objective at momentum point
         g1 = g(q)
-        if g1 == 0:
-            if verbosity > 0:
-                print("\nZero cost, breaking")
-            break
         grad_g1 = grad_g(q)
         if not np.all(np.isfinite(grad_g1)):
-            raise RuntimeError(f'invalid gradient at iteration {k + 1}: '
-                               f'{grad_g1}')
+            warnings.warn("gradient contains invalid values", RuntimeWarning)
+            return np.nan
         if np.all(grad_g1 == 0):
-            if verbosity > 0:
-                print("\nZero gradient, breaking")
+            warnings.warn("zero gradient, breaking", RuntimeWarning)
             break
         # store old iterate
         x_old = x
@@ -171,11 +161,11 @@ def acc_prox_grad_method(x: np.ndarray,
         q = x + ((k - 1) / (k + 2)) * (x - x_old)
 
         if line_iter == max_line_iter - 1:
-            if verbosity > 0:
-                print('\nwarning: line search failed\n', flush=True)
+            warnings.warn("line search failed", RuntimeWarning)
             s = s0
-        if not np.all(np.isfinite(x)) and verbosity > 0:
-            print(f'\nwarning: x contains invalid values\n', flush=True)
+        if not np.all(np.isfinite(x)):
+            warnings.warn("x contains invalid values", RuntimeWarning)
+            return np.nan
         # terminate if objective function is constant within tolerance
         f_old = f
         f = g(x) + h(x)

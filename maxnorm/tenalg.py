@@ -91,18 +91,24 @@ def kr_dot(U1, U2):
         hadamard_prod *= U1[i].T @ U2[i]
     return np.sum(hadamard_prod.flatten())
 
-def kr_rescale(U, desired_norm):
-    '''
-    Rescale tensor to desired Hilbert-Schmidt norm
-    '''
-    t = len(U)
-    r = U[0].shape[1]
-    current_norm = np.sqrt(kr_dot(U, U))
-    scale_factor = (desired_norm / current_norm) ** (1./t)
-    Unew = [Ui.copy() * scale_factor for Ui in U]
-    return Unew
+def kr_rescale(U, desired_norm=1, norm='hs'):
+    if norm == 'hs':
+        '''
+        Rescale tensor to desired Hilbert-Schmidt norm
+        '''
+        t = len(U)
+        r = U[0].shape[1]
+        current_norm = np.sqrt(kr_dot(U, U))
+        scale_factor = (desired_norm / current_norm) ** (1./t)
+        Unew = [Ui.copy() * scale_factor for Ui in U]
+        return Unew
+    elif norm == 'std':
+        Unew = [Ui * (desired_norm ** 2 / r)**(1 / (2 * t)) for Ui in U]
+        return Unew
+    else:
+        raise Exception("norm %s unknown" % str(norm))
 
-def kr_rescale_factors(U):
+def kr_balance_factors(U):
     '''
     Rescale factors to have equal column-wise 2-norms
     '''
