@@ -91,7 +91,7 @@ def kr_dot(U1, U2):
         hadamard_prod *= U1[i].T @ U2[i]
     return np.sum(hadamard_prod.flatten())
 
-def kr_rescale(U, desired_norm=1, norm='hs'):
+def kr_rescale(U, desired_norm=1., norm='hs'):
     if norm == 'hs':
         '''
         Rescale tensor to desired Hilbert-Schmidt norm
@@ -103,7 +103,10 @@ def kr_rescale(U, desired_norm=1, norm='hs'):
         Unew = [Ui.copy() * scale_factor for Ui in U]
         return Unew
     elif norm == 'std':
-        Unew = [Ui * (desired_norm ** 2 / r)**(1 / (2 * t)) for Ui in U]
+        t = len(U)
+        r = U[0].shape[1]
+        scale_factor = (desired_norm / np.sqrt(r)) ** (1. / t)
+        Unew = [Ui.copy() * scale_factor for Ui in U]
         return Unew
     else:
         raise Exception("norm %s unknown" % str(norm))

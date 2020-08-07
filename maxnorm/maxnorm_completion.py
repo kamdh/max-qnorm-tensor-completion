@@ -265,7 +265,6 @@ def tensor_completion_alt_min(data, rank, init='svd', U0=None,
             U = [np.random.randn(data.shape[i], rank) for i in range(t)]
         else:
             raise Exception("Unrecognized init option " + init)
-        kr_rescale(U, 2**t)
         # mask = data != 0
         # core, factors = parafac(data, rank, mask=mask, init='random', verbose=True, tol=1e-3)
         # scale_mat = np.diag(core.todense()**(1/t))

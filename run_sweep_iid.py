@@ -20,7 +20,7 @@ def gen_err(Upred, Utrue):
     mse_gen = kr_dot(Upred, Upred) + norm_true - 2 * kr_dot(Upred, Utrue)
     return np.sqrt(mse_gen / norm_true)
 
-def run_simulation(n, t, r, sigma, r_fit, rep, const = 10,
+def run_simulation(n, t, r, sigma, r_fit, rep, const = 10.,
                        max_iter=100, inner_max_iter=40, tol=1e-8, alg='max', verbosity=0,
                        kappa=100, beta=1, epsilon=1e-3, delta=None):
     n = int(n)
@@ -28,13 +28,17 @@ def run_simulation(n, t, r, sigma, r_fit, rep, const = 10,
     r = int(r)
     r_fit = int(r_fit)
     rep = int(rep)
-    ndata =  const * r * t * n * float(np.log10(n))
+    const = float(const)
+    ndata = np.round(const * r * t * n * np.log10(n))
     U = kr_random(n, t, r)
     U = kr_rescale(U, np.sqrt(2), 'std')
     max_qnorm_ub_true = max_qnorm_ub(U)
     if verbosity > 1:
+        print("Running a simulation: n = %d, t = %d, r = %d, sigma = %f, r_fit = %d\n" \
+                  % (n, t, r, sigma, r_fit))
         print("max_qnorm_ub_true = %1.3e" % max_qnorm_ub_true)
-    observation_mask = obs_mask_iid(tuple([n for i in range(t)]), ndata * n**(-t))
+        print("number of samples = %d, %1.2e%%" % (ndata, 100. * float(ndata) / n**t))
+    observation_mask = obs_mask_iid(tuple([n for i in range(t)]), float(ndata) * n**(-t))
     data = generate_data(observation_mask, U, sigma)
     clean_data_rmse = np.sqrt(loss(U, data) / data.nnz)
     if delta is None:
