@@ -21,8 +21,8 @@ def gen_err(Upred, Utrue):
     return np.sqrt(mse_gen / norm_true)
 
 def run_simulation(n, t, r, sigma, r_fit, rep, const = 10.,
-                       max_iter=100, inner_max_iter=40, tol=1e-8, alg='max', verbosity=0,
-                       kappa=100, beta=1, epsilon=1e-3, delta=None):
+                       max_iter=300, inner_max_iter=30, tol=1e-10, alg='max', verbosity=0,
+                       kappa=100, beta=1, epsilon=1, delta=None):
     n = int(n)
     t = int(t)
     r = int(r)
@@ -32,17 +32,18 @@ def run_simulation(n, t, r, sigma, r_fit, rep, const = 10.,
     ndata = np.round(const * r * t * n * np.log10(n))
     U = kr_random(n, t, r)
     U = kr_rescale(U, np.sqrt(2), 'std')
+    observation_mask = 
+    # observation_mask = obs_mask_iid(tuple([n for i in range(t)]), float(ndata) * n**(-t))
     max_qnorm_ub_true = max_qnorm_ub(U)
     if verbosity > 1:
         print("Running a simulation: n = %d, t = %d, r = %d, sigma = %f, r_fit = %d\n" \
                   % (n, t, r, sigma, r_fit))
         print("max_qnorm_ub_true = %1.3e" % max_qnorm_ub_true)
         print("number of samples = %d, %1.2e%%" % (ndata, 100. * float(ndata) / n**t))
-    observation_mask = obs_mask_iid(tuple([n for i in range(t)]), float(ndata) * n**(-t))
     data = generate_data(observation_mask, U, sigma)
     clean_data_rmse = np.sqrt(loss(U, data) / data.nnz)
     if delta is None:
-        delta = 2 * clean_data_rmse
+        delta = 1 * clean_data_rmse
     if alg == 'als':
         try:
             U_fit, cost_arr = \
@@ -114,14 +115,14 @@ def run_simulation(n, t, r, sigma, r_fit, rep, const = 10.,
 
 if __name__ == '__main__':
     # generate parameters for a sweep
-    n = [10, 20, 40, 80, 160]
+    n = [10, 20, 40]
     #n = [10]
     t = [3, 4, 5]
     r = [3]
-    sigma = [0.1]
-    r_fit = [1, 3, 5, 10, 16, 24, 32]
+    sigma = [0.01]
+    r_fit = [1, 3, 8, 16, 32, 64]
     rep = [i for i in range(10)]
-    const = [1, 5, 10, 20, 40, 80]
+    const = [5, 10, 20, 40, 100]
     # n = [10]
     # t = [3]
     # r = [3]

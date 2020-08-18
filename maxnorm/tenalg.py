@@ -144,7 +144,7 @@ def kr_get_items(U, coords):
                 summand *= U[i][coords[i, :], r]
             values += summand
         return values
-    else: 
+    else:
         row = np.ones(r)
         for k in range(t):
             row *= U[k][coords[k], :]
