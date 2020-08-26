@@ -175,10 +175,15 @@ def sparse_mttkrp(X, U, mode):
         V[:, r] = aggregate(X.coords[mode, :], data, func="sum", fill_value=0, size=n)
     return V
 
-def kr_random(n, t, r, rescale=False, normalize_cols=False):
+def kr_random(n, t, r, rescale=False, normalize_cols=False, rvs='gaussian'):
     U = []
     for i in range(t):
-        Ui = np.random.randn(n, r)
+        if rvs == 'gaussian':
+            Ui = np.random.randn(n, r)
+        elif rvs == 'unif':
+            Ui = 2 * (np.random.rand(n, r) - 0.5)
+        else:
+            raise Exception('unrecognized type of random variable in rvs')
         if normalize_cols:
             Ui /= np.linalg.norm(Ui, axis=0)[np.newaxis, :]
         U.append(Ui)

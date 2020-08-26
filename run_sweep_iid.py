@@ -32,8 +32,8 @@ def run_simulation(n, t, r, sigma, r_fit, rep, const = 10.,
     ndata = np.round(const * r * t * n * np.log10(n))
     U = kr_random(n, t, r)
     U = kr_rescale(U, np.sqrt(2), 'std')
-    observation_mask = 
-    # observation_mask = obs_mask_iid(tuple([n for i in range(t)]), float(ndata) * n**(-t))
+    #observation_mask = 
+    observation_mask = obs_mask_iid(tuple([n for i in range(t)]), float(ndata) * n**(-t))
     max_qnorm_ub_true = max_qnorm_ub(U)
     if verbosity > 1:
         print("Running a simulation: n = %d, t = %d, r = %d, sigma = %f, r_fit = %d\n" \

@@ -98,7 +98,7 @@ def tensor_completion_maxnorm(data, rank, delta, init='svd', U0=None,
                                   tol=1e-4, max_iter=10,
                                   inner_max_iter=30, inner_tol=None,
                                   inner_line_iter=30, inner_line_factr=0.5,
-                                  verbosity=0):
+                                  verbosity=0, rebalance=True):
 
     def cost(U, data, delta, kappa, beta, epsilon):
         '''
@@ -128,7 +128,7 @@ def tensor_completion_maxnorm(data, rank, delta, init='svd', U0=None,
             U = [sparse_unfold_svs(data, i, rank) for i in range(t)]
         elif init == 'svdrand':
             U = [sparse_unfold_svs(data, i, rank) + \
-                     1.0 / np.sqrt(data.shape[i]) * np.random.randn(data.shape[i], rank)
+                     0.3 / np.sqrt(data.shape[i]) * np.random.randn(data.shape[i], rank)
                      for i in range(t)]
         elif init == 'random':
             U = [np.random.randn(data.shape[i], rank) for i in range(t)]
@@ -154,78 +154,82 @@ def tensor_completion_maxnorm(data, rank, delta, init='svd', U0=None,
     cost_arr = np.zeros((max_iter + 1,))
     cost_arr[k] = cost_old
     while convergence_crit > tol and k < max_iter:
-        if sgd:
-            indices = np.random.choice(data.nnz, sgd_batch_size)
-            data_k = sparse.COO(data.coords[:,indices], data.data[indices], shape=data.shape)
-        else:
-            data_k = data
-        resid_factor = float(data.nnz) / data_k.nnz
-        for i in range(t):
-            # minimize out ith factor
+        try:
+            if sgd:
+                indices = np.random.choice(data.nnz, sgd_batch_size)
+                data_k = sparse.COO(data.coords[:,indices], data.data[indices], shape=data.shape)
+            else:
+                data_k = data
+            resid_factor = float(data.nnz) / data_k.nnz
+            for i in range(t):
+                # minimize out ith factor
+                if verbosity > 1:
+                    print("Entering inner loop for factor %d" % i)
+                U_minus_i = copy.deepcopy(U)
+                Ui = U_minus_i[i]
+                del U_minus_i[i]
+                qnorm_factr = max_qnorm_ub(U_minus_i)
+                if verbosity > 1:
+                    print("qnorm_factr = %1.3e" % qnorm_factr)
+                # relaxed cost:
+                # .. math:: \mathrm{cost}(U) = g(U) + h(U)
+                # .. math:: g(U) = \frac{\kappa}{2} \left( 1 - \frac{\delta}{\max(\|r\|_2, \delta)} \right) \| r \|_2^2
+                # .. math:: h(U) = \| U \|_{2,\infty} \mathrm{const}
+                def g(Ui):
+                    Ut = copy.deepcopy(U_minus_i)
+                    Ut.insert(i, Ui)
+                    resid_norm = np.sqrt(loss(Ut, data_k))
+                    if resid_norm <= (1 + beta / kappa) * delta:
+                        mu = kappa / (kappa + beta)
+                    else:
+                        mu = delta / resid_norm
+                    #mu = 0.
+                    tik = 0.
+                    if epsilon > 0:
+                        for Us in Ut:
+                            tik += 0.5 * epsilon * np.linalg.norm(Us, 'fro') ** 2
+                    return 0.5 * (kappa * (1 - mu)**2 + mu**2 * beta) * resid_norm ** 2 * resid_factor + tik
+                def grad_g(Ui):
+                    Ut = copy.deepcopy(U_minus_i)
+                    Ut.insert(i, Ui)
+                    resid_norm = np.sqrt(loss(Ut, data_k))
+                    if resid_norm <= (1 + beta / kappa) * delta:
+                        mu = kappa / (kappa + beta)
+                    else:
+                        mu = delta / resid_norm
+                    #mu = 0.
+                    return kappa * (1 - mu) * sparse_mttkrp(sparse_resid(Ut, data_k), Ut, i) * resid_factor \
+                      + epsilon * Ui
+                def h(Ui):
+                    return qnorm_factr * norm_2_inf(Ui)
+                def prox_h(Ui, s):
+                    return prox_norm_2_inf(Ui, s * qnorm_factr)
+                Ui = acc_prox_grad_method(Ui, g, grad_g, h, prox_h, s0 = 1.,
+                                          max_iter=inner_max_iter, tol=inner_tol, gamma=inner_line_factr,
+                                          max_line_iter=inner_line_iter)
+                U = copy.deepcopy(U_minus_i)
+                U.insert(i, Ui)
+                if k < 1 and rebalance is True:
+                    U = kr_balance_factors(U)
+                #tensor = TensorCPD(U, core_values)
+            # inner loop finished, check for convergence
+            norm_ub_k = max_qnorm_ub(U)
+            cost_k = cost(U, data, delta, kappa, beta, epsilon)
+            cost_arr[k+1] = cost_k
+            resid_norm = np.sqrt(loss(U, data) / data.nnz)
             if verbosity > 1:
-                print("Entering inner loop for factor %d" % i)
-            U_minus_i = copy.deepcopy(U)
-            Ui = U_minus_i[i]
-            del U_minus_i[i]
-            qnorm_factr = max_qnorm_ub(U_minus_i)
-            if verbosity > 1:
-                print("qnorm_factr = %1.3e" % qnorm_factr)
-            # relaxed cost:
-            # .. math:: \mathrm{cost}(U) = g(U) + h(U)
-            # .. math:: g(U) = \frac{\kappa}{2} \left( 1 - \frac{\delta}{\max(\|r\|_2, \delta)} \right) \| r \|_2^2
-            # .. math:: h(U) = \| U \|_{2,\infty} \mathrm{const}
-            def g(Ui):
-                Ut = copy.deepcopy(U_minus_i)
-                Ut.insert(i, Ui)
-                resid_norm = np.sqrt(loss(Ut, data_k))
-                if resid_norm <= (1 + beta / kappa) * delta:
-                    mu = kappa / (kappa + beta)
-                else:
-                    mu = delta / resid_norm
-                #mu = 0.
-                tik = 0.
-                if epsilon > 0:
-                    for Us in Ut:
-                        tik += 0.5 * epsilon * np.linalg.norm(Us, 'fro') ** 2
-                return 0.5 * (kappa * (1 - mu)**2 + mu**2 * beta) * resid_norm ** 2 * resid_factor + tik
-            def grad_g(Ui):
-                Ut = copy.deepcopy(U_minus_i)
-                Ut.insert(i, Ui)
-                resid_norm = np.sqrt(loss(Ut, data_k))
-                if resid_norm <= (1 + beta / kappa) * delta:
-                    mu = kappa / (kappa + beta)
-                else:
-                    mu = delta / resid_norm
-                #mu = 0.
-                return kappa * (1 - mu) * sparse_mttkrp(sparse_resid(Ut, data_k), Ut, i) * resid_factor \
-                  + epsilon * Ui
-            def h(Ui):
-                return qnorm_factr * norm_2_inf(Ui)
-            def prox_h(Ui, s):
-                return prox_norm_2_inf(Ui, s * qnorm_factr)
-            Ui = acc_prox_grad_method(Ui, g, grad_g, h, prox_h, s0 = 1.,
-                                      max_iter=inner_max_iter, tol=inner_tol, gamma=inner_line_factr,
-                                      max_line_iter=inner_line_iter)
-            U = copy.deepcopy(U_minus_i)
-            U.insert(i, Ui)
-            if k < 3:
-                U = kr_balance_factors(U)
-            #tensor = TensorCPD(U, core_values)
-        # inner loop finished, check for convergence
-        norm_ub_k = max_qnorm_ub(U)
-        cost_k = cost(U, data, delta, kappa, beta, epsilon)
-        cost_arr[k+1] = cost_k
-        resid_norm = np.sqrt(loss(U, data) / data.nnz)
-        if verbosity > 1:
-            print("\n=============================\nIteration %d complete" % k)
-            print("\n\nscaled || r || = %1.3e, delta = %1.3e"
-                      % (resid_norm, delta / np.sqrt(data.nnz)))
-            print("Max-qnorm upper bound: %1.3e" % norm_ub_k)
-            print("Cost function:         %1.3e" % cost_k)
-            print("\n=============================\n")
-        convergence_crit = abs(cost_k - cost_old)
-        cost_old = cost_k
-        k += 1
+                print("\n=============================\nIteration %d complete" % k)
+                print("\n\nscaled || r || = %1.3e, delta = %1.3e"
+                          % (resid_norm, delta / np.sqrt(data.nnz)))
+                print("Max-qnorm upper bound: %1.3e" % norm_ub_k)
+                print("Cost function:         %1.3e" % cost_k)
+                print("\n=============================\n")
+            convergence_crit = abs(cost_k - cost_old)
+            cost_old = cost_k
+            k += 1
+        except KeyboardInterrupt:
+            print("Caught KeyboardInterrupt, exiting early")
+            break
     if verbosity > 0:
         print("\nfinished in %d iterations" % k)
         print("\n\nscaled || r || = %1.3e, delta = %1.3e"
@@ -259,7 +263,7 @@ def tensor_completion_alt_min(data, rank, init='svd', U0=None,
             U = [sparse_unfold_svs(data, i, rank) for i in range(t)]
         elif init == 'svdrand':
             U = [sparse_unfold_svs(data, i, rank) + \
-                     0.1 / np.sqrt(data.shape[i]) * np.random.randn(data.shape[i], rank)
+                     0.3 / np.sqrt(data.shape[i]) * np.random.randn(data.shape[i], rank)
                      for i in range(t)]
         elif init == 'random':
             U = [np.random.randn(data.shape[i], rank) for i in range(t)]
@@ -282,50 +286,54 @@ def tensor_completion_alt_min(data, rank, init='svd', U0=None,
     cost_arr = np.zeros((max_iter + 1,))
     cost_arr[k] = cost_old
     while convergence_crit > tol and k < max_iter:
-        for i in range(t):
-            # minimize out ith factor
+        try:
+            for i in range(t):
+                # minimize out ith factor
+                if verbosity > 1:
+                    print("Entering inner loop for factor %d" % i)
+                U_minus_i = copy.deepcopy(U)
+                Ui = U_minus_i[i].copy()
+                del U_minus_i[i]
+                Ui_shape = Ui.shape
+
+                def g(Ui):
+                    Ut = copy.deepcopy(U_minus_i)
+                    Ut.insert(i, Ui)
+                    resid_norm = np.sqrt(loss(Ut, data))
+                    tik = 0.
+                    if epsilon > 0:
+                        for Us in Ut:
+                            tik += 0.5 * epsilon * np.linalg.norm(Us, 'fro') ** 2
+                    return 0.5 * resid_norm ** 2 + tik
+                def grad_g(Ui):
+                    Ut = copy.deepcopy(U_minus_i)
+                    Ut.insert(i, Ui)
+                    return sparse_mttkrp(sparse_resid(Ut, data), Ut, i) + epsilon * Ui
+                def g_vec(ui):
+                    return g(np.reshape(ui, Ui_shape))
+                def grad_g_vec(ui):
+                    return grad_g(np.reshape(ui, Ui_shape)).flatten()
+
+                ui = fmin_cg(g_vec, Ui.flatten(), grad_g_vec, gtol=inner_tol, maxiter=inner_max_iter, disp=0)
+                Ui = np.reshape(ui, Ui_shape)
+                U = copy.deepcopy(U_minus_i)
+                U.insert(i, Ui)
+            # inner loop finished, check for convergence
+            norm_ub_k = max_qnorm_ub(U)
+            cost_k = cost(U, data, epsilon)
+            cost_arr[k+1] = cost_k
+            resid_norm = np.sqrt(loss(U, data) / data.nnz)
             if verbosity > 1:
-                print("Entering inner loop for factor %d" % i)
-            U_minus_i = copy.deepcopy(U)
-            Ui = U_minus_i[i].copy()
-            del U_minus_i[i]
-            Ui_shape = Ui.shape
-
-            def g(Ui):
-                Ut = copy.deepcopy(U_minus_i)
-                Ut.insert(i, Ui)
-                resid_norm = np.sqrt(loss(Ut, data))
-                tik = 0.
-                if epsilon > 0:
-                    for Us in Ut:
-                        tik += 0.5 * epsilon * np.linalg.norm(Us, 'fro') ** 2
-                return 0.5 * resid_norm ** 2 + tik
-            def grad_g(Ui):
-                Ut = copy.deepcopy(U_minus_i)
-                Ut.insert(i, Ui)
-                return sparse_mttkrp(sparse_resid(Ut, data), Ut, i) + epsilon * Ui
-            def g_vec(ui):
-                return g(np.reshape(ui, Ui_shape))
-            def grad_g_vec(ui):
-                return grad_g(np.reshape(ui, Ui_shape)).flatten()
-
-            ui = fmin_cg(g_vec, Ui.flatten(), grad_g_vec, gtol=inner_tol, maxiter=inner_max_iter, disp=0)
-            Ui = np.reshape(ui, Ui_shape)
-            U = copy.deepcopy(U_minus_i)
-            U.insert(i, Ui)
-        # inner loop finished, check for convergence
-        norm_ub_k = max_qnorm_ub(U)
-        cost_k = cost(U, data, epsilon)
-        cost_arr[k+1] = cost_k
-        resid_norm = np.sqrt(loss(U, data) / data.nnz)
-        if verbosity > 1:
-            print("\n=============================\nIteration %d complete" % k)
-            print("|| resid || = %1.3e" % resid_norm)
-            print("Cost :        %1.3e" % cost_k)
-            print("=============================\n")
-        convergence_crit = abs(cost_k - cost_old) / abs(cost_old)
-        cost_old = cost_k
-        k += 1
+                print("\n=============================\nIteration %d complete" % k)
+                print("|| resid || = %1.3e" % resid_norm)
+                print("Cost :        %1.3e" % cost_k)
+                print("=============================\n")
+            convergence_crit = abs(cost_k - cost_old) / abs(cost_old)
+            cost_old = cost_k
+            k += 1
+        except KeyboardInterrupt:
+            print("Caught KeyboardInterrupt, exiting early")
+            break            
     if verbosity > 0:
         print("\nfinished in %d iterations" % k)
         print("convergence criterion: %.3e" % convergence_crit)
