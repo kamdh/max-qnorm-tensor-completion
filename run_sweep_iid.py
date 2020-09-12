@@ -49,7 +49,7 @@ def run_simulation(n, t, r, sigma, r_fit, rep, const = 10.,
             U_fit, cost_arr = \
               tensor_completion_alt_min(data, r_fit, init='svd', max_iter=max_iter, tol=tol,
                                             inner_max_iter=max_iter_inner, epsilon=epsilon)
-        except RuntimeError:
+        except Exception:
             U_fit = None
     elif alg == 'max':
         try:
@@ -60,14 +60,14 @@ def run_simulation(n, t, r, sigma, r_fit, rep, const = 10.,
                                             init='svdrand', kappa=kappa, beta=beta,
                                             verbosity=verbosity,
                                             tol=tol, max_iter=max_iter, inner_max_iter=inner_max_iter)
-        except RuntimeError:
+        except Exception:
             U_fit = None
     elif alg == 'both':
         try:
             U_fit_als, cost_arr_als = \
               tensor_completion_alt_min(data, r_fit, init='svd', max_iter=max_iter, tol=tol,
                                             inner_max_iter=max_iter_inner, epsilon=epsilon)
-        except RuntimeError:
+        except Exception:
             U_fit_als = None
         try:
             U_fit_max, cost_arr_max = \
@@ -77,7 +77,7 @@ def run_simulation(n, t, r, sigma, r_fit, rep, const = 10.,
                                             init='svdrand', kappa=kappa, beta=beta,
                                             verbosity=verbosity,
                                             tol=tol, max_iter=max_iter, inner_max_iter=inner_max_iter)
-        except RuntimeError:
+        except Exception:
             U_fit_max = None
     else:
         raise Exception('unexpected algorithm')
@@ -117,11 +117,11 @@ if __name__ == '__main__':
     # generate parameters for a sweep
     n = [10, 20, 40]
     #n = [10]
-    t = [3, 4, 5]
+    t = [3, 4]
     r = [3]
     sigma = [0.01]
     r_fit = [1, 3, 8, 16, 32, 64]
-    rep = [i for i in range(10)]
+    rep = [i for i in range(6)]
     const = [5, 10, 20, 40, 100]
     # n = [10]
     # t = [3]

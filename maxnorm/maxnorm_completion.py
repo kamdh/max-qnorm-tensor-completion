@@ -58,19 +58,24 @@ def proj_norm_2_1(U, r):
     else:
         # solve for root
         l_upper = norm_2_inf(U)
-        result = root_scalar(_root_fun, args=(U, r), x0=1, bracket=[0, l_upper], rtol=1e-8)
+        result = root_scalar(_root_fun, args=(U, r), x0=0.5 * l_upper, bracket=[0, l_upper], xtol=1e-14, rtol=1e-12)
         l = result.root
         # apply shrinkage formula
-        W = np.zeros(U.shape)
-        ui_norms = np.linalg.norm(U, axis=1)
-        ui_scaling = (1 - l / ui_norms) * (ui_norms > l)
-        W = np.multiply(U, ui_scaling[:, np.newaxis])
-        # for i in range(U.shape[0]):
-        #     ui_norm = np.linalg.norm(U[i, :])
-        #     if ui_norm > l:
-        #         W[i, :] = (1 - l / ui_norm) * U[i, :]
-        # W_norm = norm_2_1(W)
-        # assert W_norm <= r * (1 + 1e-8), "Returned matrix norm %g not within %g-ball, uh oh!" % (W_norm, r)
+        # W = np.zeros(U.shape)
+        # ui_norms = np.linalg.norm(U, axis=1)
+        # print(ui_norms)
+        # if l > 1e613:
+        #     ui_scaling = (1 - l / ui_norms) * (ui_norms > l)
+        # else:
+        #     ui_scaling = ((ui_norms - l) / ui_norms) * (ui_norms > l)
+        # W = np.multiply(U, ui_scaling[:, np.newaxis])
+        W = np.zeros(U.shape, dtype=np.longdouble)
+        for i in range(U.shape[0]):
+            ui_norm = np.linalg.norm(U[i, :])
+            if ui_norm > l:
+                W[i, :] = (1 - l / ui_norm) * U[i, :]
+        #W_norm = norm_2_1(W)
+        #assert W_norm <= r * (1 + 1e-12), "Returned matrix norm %g not within %g-ball, uh oh!" % (W_norm, r)
         return W
 
 def prox_norm_2_inf(U, t):
@@ -78,6 +83,7 @@ def prox_norm_2_inf(U, t):
     .. math:: \mathrm{prox}_{t \| \cdot \|_{2 \to \infty}} (U)
     '''
     return U - t * proj_norm_2_1(U / t, 1)
+    #return U - proj_norm_2_1(U, t)
 
 def max_qnorm_ub(U):
     '''
@@ -91,6 +97,30 @@ def max_qnorm_ub(U):
 
 def loss(U, data):
     return (sparse_resid(U, data) ** 2).sum()
+
+def initialize(data, rank, init, verbosity=0):
+    t = data.ndim
+    if init == 'svd':
+        U = [sparse_unfold_svs(data, i, rank) for i in range(t)]
+    elif init == 'svdrand':
+        U = [sparse_unfold_svs(data, i, rank) + \
+                 0.3 / np.sqrt(data.shape[i]) * np.random.randn(data.shape[i], rank)
+                 for i in range(t)]
+    elif init == 'random':
+        U = [np.random.rand(data.shape[i], rank) - 0.5 for i in range(t)]
+    elif init == 'alt_min':
+        if verbosity > 1:
+            print("Initializing with alt_min")
+        U, _ = tensor_completion_alt_min(data, rank, init='svd', max_iter=4, verbosity=verbosity)
+    else:
+        raise Exception("Unrecognized init option " + init)
+    if init is not 'alt_min':
+        #U = kr_rescale(U, np.sqrt(np.product(data.shape) * data.sum() ** 2 / data.nnz), 'hs')
+        #U = kr_balance_factors(U)
+        #U = 10 * U / max_qnorm_ub(U)
+        pass
+    U = [Ui.astype(np.longdouble) for Ui in U]
+    return U
 
 def tensor_completion_maxnorm(data, rank, delta, init='svd', U0=None,
                                   kappa=10., beta=1, epsilon=1e-2,
@@ -120,26 +150,11 @@ def tensor_completion_maxnorm(data, rank, delta, init='svd', U0=None,
     t = data.ndim
     # initialize factor matrices
     if inner_tol is None:
-        inner_tol = tol / 10
+        inner_tol = tol * 100
     if U0 is not None:
         U = copy.deepcopy(U0)
     else:
-        if init == 'svd':
-            U = [sparse_unfold_svs(data, i, rank) for i in range(t)]
-        elif init == 'svdrand':
-            U = [sparse_unfold_svs(data, i, rank) + \
-                     0.3 / np.sqrt(data.shape[i]) * np.random.randn(data.shape[i], rank)
-                     for i in range(t)]
-        elif init == 'random':
-            U = [np.random.randn(data.shape[i], rank) for i in range(t)]
-        elif init == 'alt_min':
-            U, _ = tensor_completion_alt_min(data, rank, init='svd', max_iter=10)
-        else:
-            raise Exception("Unrecognized init option " + init)
-        # mask = data != 0
-        # core, factors = parafac(data, rank, mask=mask, init='random', verbose=True, tol=1e-3)
-        # scale_mat = np.diag(core.todense()**(1/t))
-        # U = [factors[i].todense() @ scale_mat for i in range(rank)]
+        U = initialize(data, rank, init, verbosity=verbosity)
     core_values = np.ones(rank)
     #tensor = TensorCPD(U, core_values)
     cost_old = cost(U, data, delta, kappa, beta, epsilon)
@@ -209,10 +224,12 @@ def tensor_completion_maxnorm(data, rank, delta, init='svd', U0=None,
                                           max_line_iter=inner_line_iter)
                 U = copy.deepcopy(U_minus_i)
                 U.insert(i, Ui)
-                if k < 1 and rebalance is True:
-                    U = kr_balance_factors(U)
-                #tensor = TensorCPD(U, core_values)
-            # inner loop finished, check for convergence
+            #tensor = TensorCPD(U, core_values)
+            # inner loop finished
+            # rebalance if necessary
+            if k < 1 and rebalance is True:
+                U = kr_balance_factors(U)
+            # check for convergence
             norm_ub_k = max_qnorm_ub(U)
             cost_k = cost(U, data, delta, kappa, beta, epsilon)
             cost_arr[k+1] = cost_k
@@ -259,20 +276,7 @@ def tensor_completion_alt_min(data, rank, init='svd', U0=None,
     if U0 is not None:
         U = copy.deepcopy(U0)
     else:
-        if init == 'svd':
-            U = [sparse_unfold_svs(data, i, rank) for i in range(t)]
-        elif init == 'svdrand':
-            U = [sparse_unfold_svs(data, i, rank) + \
-                     0.3 / np.sqrt(data.shape[i]) * np.random.randn(data.shape[i], rank)
-                     for i in range(t)]
-        elif init == 'random':
-            U = [np.random.randn(data.shape[i], rank) for i in range(t)]
-        else:
-            raise Exception("Unrecognized init option " + init)
-        # mask = data != 0
-        # core, factors = parafac(data, rank, mask=mask, init='random', verbose=True, tol=1e-3)
-        # scale_mat = np.diag(core.todense()**(1/t))
-        # U = [factors[i].todense() @ scale_mat for i in range(rank)]
+        U = initialize(data, rank, init, verbosity=verbosity)
     core_values = np.ones(rank)
     #tensor = TensorCPD(U, core_values)
     cost_old = cost(U, data, epsilon)
