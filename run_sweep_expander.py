@@ -21,7 +21,7 @@ def gen_err(Upred, Utrue):
     return np.sqrt(mse_gen / norm_true)
 
 def run_simulation(n, t, r, sigma, r_fit, rep, d=10,
-                       max_iter=None, inner_max_iter=10, tol=1e-10, alg='max', verbosity=0,
+                       max_iter=None, inner_max_iter=10, tol=1e-10, alg='fro', verbosity=0,
                        kappa=100, beta=1, epsilon=1e-2, delta=None):
     # parameter parsing
     n = int(n)
@@ -44,8 +44,8 @@ def run_simulation(n, t, r, sigma, r_fit, rep, d=10,
     max_qnorm_ub_true = max_qnorm_ub(U)
     data = generate_data(observation_mask, U, sigma)
     if verbosity > 1:
-        print("Running a simulation: n = %d, t = %d, r = %d, sigma = %f, r_fit = %d\n" \
-                  % (n, t, r, sigma, r_fit))
+        print("Running a simulation: n = %d, t = %d, r = %d, sigma = %f, r_fit = %d, alg=%s\n" \
+                  % (n, t, r, sigma, r_fit, alg))
         print("max_qnorm_ub_true = %1.3e" % max_qnorm_ub_true)
         print("expander degree = %d, sampling %1.2e%%" % (d, 100. * float(data.nnz) / n**t))
     clean_data_rmse = np.sqrt(loss(U, data) / data.nnz)
@@ -54,6 +54,15 @@ def run_simulation(n, t, r, sigma, r_fit, rep, d=10,
             U_fit, cost_arr = \
               tensor_completion_alt_min(data, r_fit, init='svd', max_iter=max_iter, tol=tol,
                                             inner_max_iter=max_iter_inner, epsilon=epsilon)
+        except Exception:
+            U_fit = None
+    elif alg == 'fro':
+        try:
+            U_fit, cost_arr = \
+              tensor_completion_fro(data, r_fit, delta * np.sqrt(data.nnz),
+                                        init='svdrand', kappa=kappa, beta=beta,
+                                        verbosity=verbosity, inner_tol=tol/100,
+                                        tol=tol, max_iter=max_iter, inner_max_iter=inner_max_iter)
         except Exception:
             U_fit = None
     elif alg == 'max':
@@ -129,6 +138,7 @@ if __name__ == '__main__':
     rep = [i for i in range(6)]
     #const = [5, 10, 20, 40, 100]
     d = [3, 7, 11, 15]
+    alg = ['fro']
     # n = [10]
     # t = [3]
     # r = [3]
@@ -145,6 +155,7 @@ if __name__ == '__main__':
 
     lazy_results = []
     for parameters in param_df.values:
+        print(parameters)
         lazy_result = dask.delayed(run_simulation)(*parameters)
         lazy_results.append(lazy_result)
 
@@ -157,4 +168,4 @@ if __name__ == '__main__':
     # param_df.to_csv("params_max.csv")
     # data.to_csv("results_max.csv")
     table = param_df.join(data)
-    table.to_csv("max_n_expander.csv")
+    table.to_csv("max_n_expander_fro.csv")
