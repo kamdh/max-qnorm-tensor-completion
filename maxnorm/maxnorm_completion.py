@@ -181,11 +181,13 @@ def tensor_completion_maxnorm(U_true, data, rank, delta, init='svd', U0=None,
     ge_arr[k] = gen_err(U, U_true)
     ge_mse_arr[k] = mse_gen_err(U, U_true)
     if verbosity > 0:
+        print("=============================")
         print("Initial cost: %1.3e" % cost_old)
         print("Initial qnorm_ub: %1.3e" % max_qnorm_ub(U))
         print("|| r || = %1.3e, delta = %1.3e" % (resid_norm, delta / np.sqrt(data.nnz)))
 #         print("Initial Relative RMSE : %1.3e" % ge_arr[k])
         print("Initial MSE : %1.3e" % ge_mse_arr[k])
+        print("=============================\n")
     while convergence_crit > tol and k < max_iter:
         try:
             if sgd:
@@ -249,19 +251,25 @@ def tensor_completion_maxnorm(U_true, data, rank, delta, init='svd', U0=None,
                 U = kr_balance_factors(U)
             # check for convergence
             norm_ub_k = max_qnorm_ub(U)
+
+            # compute cost
             cost_k = cost(U, data, delta, kappa, beta, epsilon)
             cost_arr[k+1] = cost_k
-            ge_k = gen_err(U, U_true)
-            ge_arr[k+1] = ge_k
-            ge_mse_k = mse_gen_err(U, U_true)
-            ge_mse_arr[k+1] = ge_mse_k
+
+            # compute ge
+            #ge_k = gen_err(U, U_true)
+            #ge_arr[k+1] = ge_k
+
+            #ge_mse_k = mse_gen_err(U, U_true)
+            #ge_mse_arr[k+1] = ge_mse_k
+
             resid_norm = np.sqrt(loss(U, data) / data.nnz)
-            if verbosity > 0 and k % 10 == 0:
+            if verbosity > 0:
                 print("\n=============================\nIteration %d complete" % k)
                 print("|| resid || = %1.3e" % resid_norm)
-                print("Cost : %1.3e" % cost_k)
-#                 print("Relative RMSE : %1.3e" % ge_k)
-                print("MSE : %1.3e" % ge_mse_k)
+                print("||Cost || = %1.3e" % cost_k)
+                #                 print("Relative RMSE : %1.3e" % ge_k)
+                #print("||MSE || = %1.3e" % ge_mse_k)
                 print("=============================\n")
             convergence_crit = abs(cost_k - cost_old)
             cost_old = cost_k
@@ -269,14 +277,22 @@ def tensor_completion_maxnorm(U_true, data, rank, delta, init='svd', U0=None,
         except KeyboardInterrupt:
             print("Caught KeyboardInterrupt, exiting early")
             break
+
+    ge_k = gen_err(U, U_true)
+    ge_arr = np.append(ge_arr, ge_k)
+    
+    ge_mse_k = mse_gen_err(U, U_true)
+    ge_mse_arr = np.append(ge_mse_arr, ge_mse_k)
     if verbosity > 0:
         print("\nfinished in %d iterations" % k)
         print("\n\nscaled || r || = %1.3e, delta = %1.3e"
                   % (resid_norm, delta / np.sqrt(data.nnz)))
         print("Max-qnorm upper bound: %1.3e" % norm_ub_k)
         print("Cost function: %.3e" % cost_k)
-#         print("Relative RMSE : %1.3e" % ge_k)
+        print("Relative RMSE : %1.3e" % ge_k)
+    
         print("MSE : %1.3e" % ge_mse_k)
+        
     return U, cost_arr, ge_arr, ge_mse_arr
 
 
@@ -318,11 +334,13 @@ def tensor_completion_alt_min(U_true, data, rank, init='svd', U0=None,
     ge_mse_arr[k] = mse_gen_err(U, U_true)
     
     if verbosity > 0:
+        print("=============================")
         print("Initial cost: %1.3e" % cost_old)
         print("Initial qnorm_ub: %1.3e" % max_qnorm_ub(U))
         print("|| r || = %1.3e" % resid_norm)
-#         print("Initial Relative RMSE : %1.3e" % ge_arr[k])
+        print("Initial Relative RMSE : %1.3e" % ge_arr[k])
         print("Initial MSE : %1.3e" % ge_mse_arr[k])
+        print("=============================\n")
     while convergence_crit > tol and k < max_iter:
         try:
             if sgd:
@@ -363,26 +381,37 @@ def tensor_completion_alt_min(U_true, data, rank, init='svd', U0=None,
                 U.insert(i, Ui)
             # inner loop finished, check for convergence
             norm_ub_k = max_qnorm_ub(U)
+
+            # compute cost
             cost_k = cost(U, data, epsilon)
             cost_arr[k+1] = cost_k
-            ge_k = gen_err(U, U_true)
-            ge_arr[k+1] = ge_k
-            ge_mse_k = mse_gen_err(U, U_true)
-            ge_mse_arr[k+1] = ge_mse_k
+
+            # compute ge
+            # ge_k = gen_err(U, U_true)
+            # ge_arr[k+1] = ge_k
+            # ge_mse_k = mse_gen_err(U, U_true)
+            # ge_mse_arr[k+1] = ge_mse_k
+
             resid_norm = np.sqrt(loss(U, data) / data.nnz)
-            if verbosity > 0 and k % 10 == 0:
+            if verbosity > 0:
                 print("\n=============================\nIteration %d complete" % k)
                 print("|| resid || = %1.3e" % resid_norm)
-                print("Cost : %1.3e" % cost_k)
-#                 print("Relative RMSE : %1.3e" % ge_k)
-                print("MSE : %1.3e" % ge_mse_k)
+                print("||Cost || = %1.3e" % cost_k)
+                #print("Relative RMSE : %1.3e" % ge_k)
+                #print("||MSE || = %1.3e" % ge_mse_k)
                 print("=============================\n")
             convergence_crit = abs(cost_k - cost_old) / abs(cost_old)
             cost_old = cost_k
             k += 1
         except KeyboardInterrupt:
             print("Caught KeyboardInterrupt, exiting early")
-            break            
+            break
+
+    ge_k = gen_err(U, U_true)
+    ge_arr = np.append(ge_arr, ge_k)
+    
+    ge_mse_k = mse_gen_err(U, U_true)
+    ge_mse_arr = np.append(ge_mse_arr, ge_mse_k)
     if verbosity > 0:
         print("\nfinished in %d iterations" % k)
         print("convergence criterion: %.3e" % convergence_crit)
